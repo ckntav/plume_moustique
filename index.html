@@ -295,14 +295,14 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe8d5c0);
 
 const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-camera.position.set(0, 1.2, 5);
+camera.position.set(0, 1.4, 5.5);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.target.set(0, 0.6, 0);
-controls.minDistance = 2.5;
-controls.maxDistance = 8;
+controls.target.set(0, 1.1, 0);
+controls.minDistance = 3;
+controls.maxDistance = 9;
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xfff5e8, 0.7);
@@ -320,202 +320,266 @@ const groundGeo = new THREE.PlaneGeometry(8, 8);
 const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.62;
+ground.position.y = -0.05;
 ground.receiveShadow = true;
 scene.add(ground);
 
 // ---- Materials ----
-const furColor = 0x7a4a22;
-const furDark  = 0x5a3015;
-const furLight = 0xa06835;
-const noseColor = 0x2a1a10;
+const C_FUR_MID   = 0x7b4f28;  // brun moyen principal
+const C_FUR_DARK  = 0x4e2f10;  // brun foncé (oreilles, pattes)
+const C_FUR_LIGHT = 0xa87040;  // brun clair (tête, poitrail)
+const C_NOSE      = 0x1a100a;
+const C_EYE       = 0x180e08;
+const C_COLLAR    = 0x3a9e8a;  // collier sarcelle comme dans la photo
 
-function furMat(color = furColor, rough = 0.95) {
-  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 });
+function mat(color, rough = 0.92) {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.04 });
 }
 
-// ---- Helper: fluffy sphere (icosahedron + bumped) ----
-function fluffySphere(rx, ry, rz, detail = 1) {
+// Bump pseudo-aléatoire déterministe (sin) pour fourrure bouclée cohérente
+function fluffyGeo(rx, ry, rz, detail = 2, jitter = 0.18) {
   const geo = new THREE.IcosahedronGeometry(1, detail);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const n = 1 + (Math.random() - 0.5) * 0.22;
+    const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+    const n = 1 + (seed - Math.floor(seed) - 0.5) * jitter;
     pos.setXYZ(i, x * rx * n, y * ry * n, z * rz * n);
   }
   geo.computeVertexNormals();
   return geo;
 }
 
-// ---- Plume model group ----
-// Plume est élancé: longues pattes fines, corps allongé, tête ronde, fourrure bouclée dense
+// Tube suivant une CatmullRom
+function tube(pts, radius, segs = 24, radSegs = 8) {
+  const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p)));
+  return { geo: new THREE.TubeGeometry(curve, segs, radius, radSegs, false), curve };
+}
+
+function mesh(geo, color, rough) {
+  const m = new THREE.Mesh(geo, mat(color, rough));
+  m.castShadow = true;
+  return m;
+}
+
+// ============================================================
+// PLUME — goldendoodle brun, élancé, vue 3/4 avant
+// Système de coordonnées: Y=haut, Z=avant (museau), X=droite
+// Hauteur totale ~2.4 unités, sol à Y=0
+// ============================================================
 const plume = new THREE.Group();
 scene.add(plume);
 
-// Body — plus étroit et allongé
-const bodyGeo = fluffySphere(0.58, 0.50, 0.90, 2);
-const bodyMesh = new THREE.Mesh(bodyGeo, furMat(furColor));
-bodyMesh.castShadow = true;
-bodyMesh.position.set(0, 0.1, 0);
-plume.add(bodyMesh);
+// --- CORPS ---
+// Torse principal: ellipsoïde allongé et mince
+const torsoGeo = fluffyGeo(0.44, 0.36, 0.82, 3, 0.12);
+const torsoMesh = mesh(torsoGeo, C_FUR_MID);
+torsoMesh.position.set(0, 1.08, 0);
+plume.add(torsoMesh);
 
-// Chest bump (plus de rondeur sur la poitrine)
-const chestGeo = fluffySphere(0.50, 0.42, 0.48, 1);
-const chestMesh = new THREE.Mesh(chestGeo, furMat(furColor));
-chestMesh.position.set(0, 0.0, 0.58);
-chestMesh.castShadow = true;
+// Poitrail (légèrement plus large et rond en avant)
+const chestGeo = fluffyGeo(0.40, 0.34, 0.36, 2, 0.14);
+const chestMesh = mesh(chestGeo, C_FUR_MID);
+chestMesh.position.set(0, 1.0, 0.60);
 plume.add(chestMesh);
 
-// Neck — plus long et fin (élancé)
-const neckGeo = new THREE.CylinderGeometry(0.18, 0.22, 0.62, 10);
-const neckMesh = new THREE.Mesh(neckGeo, furMat(furColor));
-neckMesh.position.set(0, 0.82, 0.30);
-neckMesh.rotation.x = -0.35;
-neckMesh.castShadow = true;
+// Croupe (arrière légèrement plus haute)
+const rumGeo = fluffyGeo(0.40, 0.38, 0.34, 2, 0.13);
+const rumMesh = mesh(rumGeo, C_FUR_MID);
+rumMesh.position.set(0, 1.14, -0.62);
+plume.add(rumMesh);
+
+// --- COU ---
+// Long et fin, incliné vers l'avant/le haut
+const neckCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 1.22, 0.38),
+  new THREE.Vector3(0, 1.48, 0.56),
+  new THREE.Vector3(0, 1.72, 0.62),
+]);
+const neckGeo = new THREE.TubeGeometry(neckCurve, 12, 0.155, 10, false);
+const neckMesh = mesh(neckGeo, C_FUR_MID);
 plume.add(neckMesh);
 
-// Head — ronde et bouclée
-const headGeo = fluffySphere(0.38, 0.36, 0.36, 2);
-const headMesh = new THREE.Mesh(headGeo, furMat(furLight));
-headMesh.position.set(0, 1.26, 0.50);
-headMesh.castShadow = true;
+// --- TÊTE ---
+// Ronde, couverte de boucles denses
+const headGeo = fluffyGeo(0.32, 0.30, 0.30, 3, 0.20);
+const headMesh = mesh(headGeo, C_FUR_LIGHT);
+headMesh.position.set(0, 1.96, 0.76);
 plume.add(headMesh);
 
-// Top-knot (toupet bouclé sur le dessus de la tête)
-const topKnotGeo = fluffySphere(0.20, 0.18, 0.18, 1);
-const topKnotMesh = new THREE.Mesh(topKnotGeo, furMat(furLight));
-topKnotMesh.position.set(0, 1.56, 0.46);
+// Toupet (top-knot) — caractéristique du goldendoodle
+const topKnotGeo = fluffyGeo(0.22, 0.20, 0.20, 2, 0.25);
+const topKnotMesh = mesh(topKnotGeo, C_FUR_LIGHT);
+topKnotMesh.position.set(0, 2.22, 0.70);
 plume.add(topKnotMesh);
 
-// Snout — plus fin
-const snoutGeo = fluffySphere(0.16, 0.12, 0.18, 1);
-const snoutMesh = new THREE.Mesh(snoutGeo, furMat(furLight));
-snoutMesh.position.set(0, 1.18, 0.76);
+// Museau — cylindrique et court
+const snoutGeo = fluffyGeo(0.145, 0.11, 0.19, 1, 0.10);
+const snoutMesh = mesh(snoutGeo, C_FUR_LIGHT);
+snoutMesh.position.set(0, 1.86, 0.96);
 plume.add(snoutMesh);
 
-// Nose
-const noseGeo = new THREE.SphereGeometry(0.05, 8, 6);
-const noseMesh = new THREE.Mesh(noseGeo, furMat(noseColor, 0.5));
-noseMesh.position.set(0, 1.20, 0.92);
-plume.add(noseMesh);
+// Nez
+const noseMesh2 = mesh(new THREE.SphereGeometry(0.052, 10, 8), C_NOSE, 0.45);
+noseMesh2.position.set(0, 1.88, 1.12);
+plume.add(noseMesh2);
 
-// Eyes
-for (const side of [-1, 1]) {
-  const eyeGeo = new THREE.SphereGeometry(0.042, 8, 6);
-  const eyeMesh = new THREE.Mesh(eyeGeo, furMat(0x1a0e08, 0.3));
-  eyeMesh.position.set(side * 0.16, 1.32, 0.76);
-  plume.add(eyeMesh);
-  const shineGeo = new THREE.SphereGeometry(0.016, 6, 4);
-  const shineMesh = new THREE.Mesh(shineGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.3 }));
-  shineMesh.position.set(side * 0.17, 1.335, 0.778);
-  plume.add(shineMesh);
+// Yeux — expressifs avec reflet
+for (const s of [-1, 1]) {
+  const eyeM = mesh(new THREE.SphereGeometry(0.044, 10, 8), C_EYE, 0.25);
+  eyeM.position.set(s * 0.155, 2.02, 0.96);
+  plume.add(eyeM);
+  // Sourcil bouclé
+  const browGeo = fluffyGeo(0.10, 0.055, 0.055, 0, 0.15);
+  const browM = mesh(browGeo, C_FUR_DARK);
+  browM.position.set(s * 0.16, 2.09, 0.94);
+  plume.add(browM);
+  // Reflet
+  const shine = new THREE.Mesh(
+    new THREE.SphereGeometry(0.016, 6, 4),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.2 })
+  );
+  shine.position.set(s * 0.165, 2.028, 0.992);
+  plume.add(shine);
 }
 
-// Ears (longues oreilles tombantes bouclées)
-for (const side of [-1, 1]) {
-  const earGroup = new THREE.Group();
-  // Upper ear attachment
-  const earTopGeo = new THREE.SphereGeometry(1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55);
-  earTopGeo.scale(0.18, 0.20, 0.12);
-  const earTopMesh = new THREE.Mesh(earTopGeo, furMat(furDark));
-  earGroup.add(earTopMesh);
-  // Lower ear flap (tombant)
-  const earFlapGeo = new THREE.CapsuleGeometry(0.10, 0.28, 6, 8);
-  const earFlapMesh = new THREE.Mesh(earFlapGeo, furMat(furDark));
-  earFlapMesh.position.set(0, -0.28, 0.02);
-  earFlapMesh.scale.set(0.8, 1, 0.55);
-  earFlapMesh.castShadow = true;
-  earGroup.add(earFlapMesh);
-  earGroup.position.set(side * 0.32, 1.30, 0.42);
-  earGroup.rotation.z = side * 0.18;
-  earGroup.rotation.x = 0.25;
-  plume.add(earGroup);
+// --- OREILLES tombantes et bouclées ---
+for (const s of [-1, 1]) {
+  const earG = new THREE.Group();
+  // Flap supérieur
+  const topE = mesh(fluffyGeo(0.14, 0.18, 0.10, 1, 0.18), C_FUR_DARK);
+  earG.add(topE);
+  // Flap inférieur (tombe le long de la tête)
+  const botE = mesh(fluffyGeo(0.12, 0.24, 0.09, 1, 0.16), C_FUR_DARK);
+  botE.position.set(0, -0.30, 0.04);
+  earG.add(botE);
+  // Pointe de l'oreille (arrondie)
+  const tipE = mesh(fluffyGeo(0.10, 0.10, 0.08, 0, 0.12), C_FUR_DARK);
+  tipE.position.set(s * 0.02, -0.54, 0.06);
+  earG.add(tipE);
+  earG.position.set(s * 0.30, 2.02, 0.68);
+  earG.rotation.z = s * 0.15;
+  earG.rotation.x = 0.20;
+  plume.add(earG);
 }
 
-// Legs — longues et fines (élancé)
-const legPositions = [
-  [-0.28, -0.18, 0.42],  // avant gauche
-  [ 0.28, -0.18, 0.42],  // avant droit
-  [-0.30, -0.18, -0.38], // arrière gauche
-  [ 0.30, -0.18, -0.38], // arrière droit
+// --- COLLIER (sarcelle comme dans la photo) ---
+const collarGeo = new THREE.TorusGeometry(0.195, 0.030, 10, 32);
+const collarMesh = new THREE.Mesh(collarGeo, mat(C_COLLAR, 0.5));
+collarMesh.position.set(0, 1.65, 0.60);
+collarMesh.rotation.x = Math.PI * 0.30;
+plume.add(collarMesh);
+
+// --- PATTES ---
+// 4 pattes avec cuisse + jambe + patte, légèrement articulées
+// Goldendoodle élancé: pattes longues (~1 unité), fines
+const legDefs = [
+  // [attachX, attachZ, thighAngleX, shinAngleX]
+  { x: -0.26, z:  0.52, tx: -0.05, sx:  0.10, front: true  },  // av-gauche
+  { x:  0.26, z:  0.52, tx: -0.05, sx:  0.10, front: true  },  // av-droit
+  { x: -0.28, z: -0.55, tx:  0.08, sx: -0.06, front: false },  // ar-gauche
+  { x:  0.28, z: -0.55, tx:  0.08, sx: -0.06, front: false },  // ar-droit
 ];
-for (const [lx, ly, lz] of legPositions) {
-  // Upper leg
-  const upperGeo = new THREE.CylinderGeometry(0.10, 0.09, 0.55, 8);
-  const upperMesh = new THREE.Mesh(upperGeo, furMat(furColor));
-  upperMesh.position.set(lx, ly - 0.28, lz);
-  upperMesh.castShadow = true;
-  plume.add(upperMesh);
-  // Lower leg (plus fin)
-  const lowerGeo = new THREE.CylinderGeometry(0.075, 0.065, 0.55, 8);
-  const lowerMesh = new THREE.Mesh(lowerGeo, furMat(furDark));
-  lowerMesh.position.set(lx, ly - 0.84, lz);
-  lowerMesh.castShadow = true;
-  plume.add(lowerMesh);
-  // Paw
-  const pawGeo = new THREE.SphereGeometry(0.10, 8, 6);
-  const pawMesh = new THREE.Mesh(pawGeo, furMat(furDark));
-  pawMesh.scale.set(1.1, 0.55, 1.2);
-  pawMesh.position.set(lx, ly - 1.14, lz);
-  plume.add(pawMesh);
+
+const legMeshes = [];
+for (const d of legDefs) {
+  const g = new THREE.Group();
+  g.position.set(d.x, 1.0, d.z);
+
+  // Cuisse (haut)
+  const thighGeo = new THREE.CapsuleGeometry(0.085, 0.42, 6, 8);
+  const thighM = mesh(thighGeo, d.front ? C_FUR_MID : C_FUR_MID);
+  thighM.position.set(0, -0.22, 0);
+  thighM.rotation.x = d.tx;
+  g.add(thighM);
+
+  // Genou
+  const kneeGeo = fluffyGeo(0.092, 0.092, 0.092, 1, 0.10);
+  const kneeM = mesh(kneeGeo, C_FUR_MID);
+  kneeM.position.set(0, -0.48, d.front ? 0.04 : -0.04);
+  g.add(kneeM);
+
+  // Jambe (bas) — plus fine
+  const shinGeo = new THREE.CapsuleGeometry(0.062, 0.40, 6, 8);
+  const shinM = mesh(shinGeo, C_FUR_DARK);
+  shinM.position.set(0, -0.74, d.front ? 0.04 : -0.04);
+  shinM.rotation.x = d.sx;
+  g.add(shinM);
+
+  // Patte (pied)
+  const pawGeo = fluffyGeo(0.10, 0.065, 0.12, 1, 0.12);
+  const pawM = mesh(pawGeo, C_FUR_DARK);
+  pawM.position.set(0, -1.02, d.front ? 0.06 : -0.05);
+  g.add(pawM);
+
+  plume.add(g);
+  legMeshes.push(g);
 }
 
-// Tail — plumeau bouclé recourbé vers le haut, bien fourni
-const tailCurve = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0, 0.05, -0.88),
-  new THREE.Vector3(0, 0.40, -1.10),
-  new THREE.Vector3(0, 0.90, -1.08),
-  new THREE.Vector3(0, 1.30, -0.85),
-  new THREE.Vector3(0, 1.52, -0.60),
-]);
-const tailGeo = new THREE.TubeGeometry(tailCurve, 20, 0.075, 8, false);
-const tailMesh = new THREE.Mesh(tailGeo, furMat(furDark));
-tailMesh.castShadow = true;
-plume.add(tailMesh);
+// --- QUEUE plumeau ---
+// Recourbée vers le haut depuis la croupe, gros pompon au bout
+const tailPts = [
+  [0, 1.22, -0.90],
+  [0, 1.52, -1.12],
+  [0, 1.92, -1.10],
+  [0, 2.22, -0.88],
+  [0, 2.42, -0.62],
+];
+const tailCurve = new THREE.CatmullRomCurve3(tailPts.map(p => new THREE.Vector3(...p)));
+const tailTubeGeo = new THREE.TubeGeometry(tailCurve, 24, 0.065, 8, false);
+const tailTubeMesh = mesh(tailTubeGeo, C_FUR_DARK);
+plume.add(tailTubeMesh);
 
-// Tail fluff (grosses boucles au bout = plumeau)
-for (let i = 0; i < 10; i++) {
-  const t = 0.45 + i * 0.058;
+// Boucles progressivement plus grosses vers le bout (pompon)
+for (let i = 0; i < 14; i++) {
+  const t = 0.38 + i * 0.048;
   const pt = tailCurve.getPoint(Math.min(t, 1));
-  const r = 0.10 + i * 0.018;
-  const fluffGeo = fluffySphere(r, r * 0.85, r, 0);
-  const fluffMesh = new THREE.Mesh(fluffGeo, furMat(i > 5 ? furLight : furDark));
-  fluffMesh.position.copy(pt);
-  plume.add(fluffMesh);
+  const r = 0.07 + i * 0.022;
+  const bGeo = fluffyGeo(r, r * 0.90, r, i > 8 ? 1 : 0, 0.22);
+  const bMesh = mesh(bGeo, i > 9 ? C_FUR_LIGHT : C_FUR_DARK);
+  bMesh.position.copy(pt);
+  plume.add(bMesh);
 }
 
-// Décale tout le modèle pour que les pattes touchent le sol
-plume.position.y = 0.72;
-
-// Gather all body meshes for raycasting (exclude shine/eyes)
-const bodyMeshes = plume.children.filter(c => c.isMesh && c.material.color.r > 0.1);
+// Gather all body meshes for raycasting (exclure shine/reflets)
+const bodyMeshes = [];
+plume.traverse(child => {
+  if (child.isMesh) {
+    const c = child.material.color;
+    // exclure blanc (reflets) et collier
+    if (c.r < 0.95 && !(c.r < 0.25 && c.g > 0.55 && c.b > 0.50)) {
+      bodyMeshes.push(child);
+    }
+  }
+});
 
 // ---- Bite markers ----
 const biteSpheres = [];
 
 function addBiteMarker(position, id) {
-  const geo = new THREE.SphereGeometry(0.07, 10, 8);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xe74c3c,
-    roughness: 0.4,
+  const geo = new THREE.SphereGeometry(0.10, 12, 10);
+  const bMat = new THREE.MeshStandardMaterial({
+    color: 0xff2222,
+    roughness: 0.3,
     metalness: 0.1,
-    transparent: true,
-    opacity: 0.88,
+    transparent: false,
+    emissive: 0x880000,
+    emissiveIntensity: 0.4,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.copy(position);
-  mesh.userData.biteId = id;
+  const m = new THREE.Mesh(geo, bMat);
+  m.position.copy(position);
+  m.userData.biteId = id;
 
-  // pulse ring
-  const ringGeo = new THREE.RingGeometry(0.08, 0.12, 20);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xe74c3c, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+  // Anneau pulsant bien visible
+  const ringGeo = new THREE.RingGeometry(0.12, 0.18, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4444, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
   const ring = new THREE.Mesh(ringGeo, ringMat);
   ring.userData.isRing = true;
-  mesh.add(ring);
+  m.add(ring);
 
-  plume.add(mesh);
-  biteSpheres.push(mesh);
-  return mesh;
+  plume.add(m);
+  biteSpheres.push(m);
+  return m;
 }
 
 function removeBiteMarker(id) {
@@ -546,7 +610,40 @@ function saveBites(bites) {
   localStorage.setItem('plume_bites', JSON.stringify(bites));
 }
 
-let bites = loadBites();
+// Piqûres initiales issues de la piqûre map (19 juin 2026)
+const SEED_BITES = [
+  // --- Côté conducteur (gauche) ---
+  { id:'s1',  date:'2026-06-19T14:00:00.000Z', zone:'Intérieur cuisse gauche', note:'', status:'guerison', px:-0.12, py:0.55, pz:-0.55 },
+  { id:'s2',  date:'2026-06-19T14:01:00.000Z', zone:'Intérieur cuisse gauche', note:'', status:'guerison', px:-0.10, py:0.44, pz:-0.58 },
+  { id:'s3',  date:'2026-06-19T14:02:00.000Z', zone:'Intérieur cuisse gauche', note:'', status:'guerison', px:-0.15, py:0.64, pz:-0.52 },
+  { id:'s4',  date:'2026-06-19T14:03:00.000Z', zone:'Aisselle gauche',          note:'', status:'guerison', px:-0.19, py:0.88, pz:0.50 },
+  { id:'s5',  date:'2026-06-19T14:04:00.000Z', zone:'Bras avant gauche',        note:'en ligne avec aisselle', status:'guerison', px:-0.27, py:0.76, pz:0.52 },
+  // --- Côté passager (droite) ---
+  { id:'s6',  date:'2026-06-19T14:05:00.000Z', zone:'Bedaine droite',           note:'', status:'guerison', px:0.16, py:0.72, pz:0.08 },
+  { id:'s7',  date:'2026-06-19T14:06:00.000Z', zone:'Bedaine droite',           note:'', status:'guerison', px:0.22, py:0.67, pz:0.16 },
+  { id:'s8',  date:'2026-06-19T14:07:00.000Z', zone:'Bedaine droite',           note:'', status:'guerison', px:0.14, py:0.75, pz:0.22 },
+  { id:'s9',  date:'2026-06-19T14:08:00.000Z', zone:'Queue',                    note:'', status:'guerison', px:0.05, py:1.62, pz:-1.06 },
+  { id:'s10', date:'2026-06-19T14:09:00.000Z', zone:'Queue',                    note:'', status:'guerison', px:0.08, py:1.78, pz:-1.02 },
+  { id:'s11', date:'2026-06-19T14:10:00.000Z', zone:'Queue',                    note:'', status:'guerison', px:0.06, py:1.50, pz:-1.08 },
+  { id:'s12', date:'2026-06-19T14:11:00.000Z', zone:'Près patte avant droite',  note:'', status:'guerison', px:0.27, py:0.12, pz:0.54 },
+  { id:'s13', date:'2026-06-19T14:12:00.000Z', zone:'Épaule droite',            note:'', status:'guerison', px:0.33, py:1.18, pz:0.48 },
+  { id:'s14', date:'2026-06-19T14:13:00.000Z', zone:'Aisselle droite',          note:'', status:'guerison', px:0.22, py:0.82, pz:0.52 },
+  // --- Visage ---
+  { id:'s15', date:'2026-06-19T14:14:00.000Z', zone:'Nez',                      note:'', status:'guerison', px:-0.06, py:1.88, pz:1.08 },
+  { id:'s16', date:'2026-06-19T14:15:00.000Z', zone:'Nez',                      note:'', status:'guerison', px: 0.06, py:1.90, pz:1.10 },
+  { id:'s17', date:'2026-06-19T14:16:00.000Z', zone:'Nez',                      note:'', status:'guerison', px: 0.00, py:1.86, pz:1.09 },
+];
+
+function seedIfEmpty() {
+  const existing = loadBites();
+  // Fusionne les seeds avec les données existantes (par id)
+  const existingIds = new Set(existing.map(b => b.id));
+  const merged = [...existing, ...SEED_BITES.filter(b => !existingIds.has(b.id))];
+  saveBites(merged);
+  return merged;
+}
+
+let bites = seedIfEmpty();
 
 // Restore markers
 bites.forEach(b => addBiteMarker(new THREE.Vector3(b.px, b.py, b.pz), b.id));
