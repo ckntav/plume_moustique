@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suivi des piqûres de Plume</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: #fdf6ee;
+      color: #3d2b1f;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #7a4a2a;
+      color: #fdf6ee;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    }
+    header h1 { font-size: 1.5rem; font-weight: normal; letter-spacing: 0.02em; }
+    header .paw { font-size: 1.8rem; }
+
+    .layout {
+      display: flex;
+      gap: 0;
+      min-height: calc(100vh - 65px);
+    }
+
+    /* 3D panel */
+    .panel-3d {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      background: #fdf6ee;
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      color: #8a6050;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    #canvas-container {
+      width: 100%;
+      max-width: 560px;
+      height: 420px;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(122,74,42,0.18);
+      cursor: crosshair;
+      background: #e8d5c0;
+      position: relative;
+    }
+
+    #canvas-container canvas { display: block; }
+
+    .mode-bar {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 9px 18px;
+      border-radius: 20px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: #c0392b;
+      color: white;
+    }
+    .btn-primary:hover { background: #a93226; }
+    .btn-secondary {
+      background: #d4a97a;
+      color: #3d2b1f;
+    }
+    .btn-secondary:hover { background: #c49060; }
+    .btn.active {
+      box-shadow: 0 0 0 3px #c0392b;
+    }
+
+    /* Journal panel */
+    .panel-journal {
+      width: 320px;
+      background: #fff8f2;
+      border-left: 2px solid #e8c9a8;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .journal-header {
+      padding: 16px 18px 10px;
+      border-bottom: 1px solid #e8c9a8;
+    }
+    .journal-header h2 { font-size: 1rem; font-weight: normal; color: #7a4a2a; }
+
+    .filter-bar {
+      padding: 10px 18px;
+      border-bottom: 1px solid #e8c9a8;
+      display: flex;
+      gap: 8px;
+    }
+    .filter-btn {
+      padding: 4px 12px;
+      border-radius: 12px;
+      border: 1px solid #d4a97a;
+      background: white;
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: #7a4a2a;
+      font-family: inherit;
+    }
+    .filter-btn.active {
+      background: #7a4a2a;
+      color: white;
+      border-color: #7a4a2a;
+    }
+
+    #bite-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 14px;
+    }
+
+    .bite-item {
+      background: white;
+      border: 1px solid #e8c9a8;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      position: relative;
+    }
+    .bite-item .bite-date { font-size: 0.75rem; color: #a07050; }
+    .bite-item .bite-zone { font-size: 0.9rem; font-weight: bold; margin: 2px 0; }
+    .bite-item .bite-controls {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      align-items: center;
+    }
+    .bite-item select {
+      font-size: 0.75rem;
+      border: 1px solid #d4a97a;
+      border-radius: 8px;
+      padding: 2px 6px;
+      background: #fdf6ee;
+      color: #3d2b1f;
+      font-family: inherit;
+    }
+    .bite-delete {
+      margin-left: auto;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #c0392b;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .status-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 8px;
+      border-radius: 10px;
+      margin-left: 6px;
+    }
+    .status-nouvelle { background: #fde8e8; color: #c0392b; }
+    .status-guerison { background: #fef3e2; color: #d4850a; }
+    .status-guerie { background: #e8f5e9; color: #2e7d32; }
+
+    .empty-state {
+      text-align: center;
+      color: #b0907a;
+      padding: 40px 20px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* Note modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .modal h3 { font-size: 1rem; margin-bottom: 14px; color: #7a4a2a; }
+    .modal textarea {
+      width: 100%;
+      height: 80px;
+      border: 1px solid #d4a97a;
+      border-radius: 8px;
+      padding: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      resize: none;
+      background: #fdf6ee;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="paw">🐾</span>
+  <h1>Suivi des piqûres de Plume</h1>
+</header>
+
+<div class="layout">
+  <div class="panel-3d">
+    <p class="hint">Faites tourner Plume avec la souris. En mode <strong>marquer</strong>, cliquez sur son corps pour ajouter une piqûre.</p>
+    <div id="canvas-container"></div>
+    <div class="mode-bar">
+      <button class="btn btn-secondary" id="btn-rotate">Tourner</button>
+      <button class="btn btn-primary active" id="btn-mark">+ Marquer une piqûre</button>
+    </div>
+  </div>
+
+  <div class="panel-journal">
+    <div class="journal-header">
+      <h2>Journal des piqûres</h2>
+    </div>
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="today">Aujourd'hui</button>
+      <button class="filter-btn" data-filter="all">Toutes</button>
+    </div>
+    <div id="bite-list"></div>
+  </div>
+</div>
+
+<!-- Modal note -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>Nouvelle piqûre</h3>
+    <p style="font-size:0.85rem;color:#8a6050;margin-bottom:10px;" id="modal-zone"></p>
+    <textarea id="modal-note" placeholder="Note optionnelle (ex: grosse bosse, se gratte...)"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="modal-cancel">Annuler</button>
+      <button class="btn btn-primary" id="modal-confirm">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---- Scene setup ----
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe8d5c0);
+
+const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+camera.position.set(0, 1.2, 5);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0.6, 0);
+controls.minDistance = 2.5;
+controls.maxDistance = 8;
+
+// Lights
+const ambientLight = new THREE.AmbientLight(0xfff5e8, 0.7);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+dirLight.position.set(3, 5, 4);
+dirLight.castShadow = true;
+scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xe8d0b0, 0.4);
+fillLight.position.set(-3, 2, -2);
+scene.add(fillLight);
+
+// Ground shadow
+const groundGeo = new THREE.PlaneGeometry(8, 8);
+const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.62;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ---- Materials ----
+const furColor = 0x7a4a22;
+const furDark  = 0x5a3015;
+const furLight = 0xa06835;
+const noseColor = 0x2a1a10;
+
+function furMat(color = furColor, rough = 0.95) {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 });
+}
+
+// ---- Helper: fluffy sphere (icosahedron + bumped) ----
+function fluffySphere(rx, ry, rz, detail = 1) {
+  const geo = new THREE.IcosahedronGeometry(1, detail);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const n = 1 + (Math.random() - 0.5) * 0.22;
+    pos.setXYZ(i, x * rx * n, y * ry * n, z * rz * n);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---- Plume model group ----
+// Plume est élancé: longues pattes fines, corps allongé, tête ronde, fourrure bouclée dense
+const plume = new THREE.Group();
+scene.add(plume);
+
+// Body — plus étroit et allongé
+const bodyGeo = fluffySphere(0.58, 0.50, 0.90, 2);
+const bodyMesh = new THREE.Mesh(bodyGeo, furMat(furColor));
+bodyMesh.castShadow = true;
+bodyMesh.position.set(0, 0.1, 0);
+plume.add(bodyMesh);
+
+// Chest bump (plus de rondeur sur la poitrine)
+const chestGeo = fluffySphere(0.50, 0.42, 0.48, 1);
+const chestMesh = new THREE.Mesh(chestGeo, furMat(furColor));
+chestMesh.position.set(0, 0.0, 0.58);
+chestMesh.castShadow = true;
+plume.add(chestMesh);
+
+// Neck — plus long et fin (élancé)
+const neckGeo = new THREE.CylinderGeometry(0.18, 0.22, 0.62, 10);
+const neckMesh = new THREE.Mesh(neckGeo, furMat(furColor));
+neckMesh.position.set(0, 0.82, 0.30);
+neckMesh.rotation.x = -0.35;
+neckMesh.castShadow = true;
+plume.add(neckMesh);
+
+// Head — ronde et bouclée
+const headGeo = fluffySphere(0.38, 0.36, 0.36, 2);
+const headMesh = new THREE.Mesh(headGeo, furMat(furLight));
+headMesh.position.set(0, 1.26, 0.50);
+headMesh.castShadow = true;
+plume.add(headMesh);
+
+// Top-knot (toupet bouclé sur le dessus de la tête)
+const topKnotGeo = fluffySphere(0.20, 0.18, 0.18, 1);
+const topKnotMesh = new THREE.Mesh(topKnotGeo, furMat(furLight));
+topKnotMesh.position.set(0, 1.56, 0.46);
+plume.add(topKnotMesh);
+
+// Snout — plus fin
+const snoutGeo = fluffySphere(0.16, 0.12, 0.18, 1);
+const snoutMesh = new THREE.Mesh(snoutGeo, furMat(furLight));
+snoutMesh.position.set(0, 1.18, 0.76);
+plume.add(snoutMesh);
+
+// Nose
+const noseGeo = new THREE.SphereGeometry(0.05, 8, 6);
+const noseMesh = new THREE.Mesh(noseGeo, furMat(noseColor, 0.5));
+noseMesh.position.set(0, 1.20, 0.92);
+plume.add(noseMesh);
+
+// Eyes
+for (const side of [-1, 1]) {
+  const eyeGeo = new THREE.SphereGeometry(0.042, 8, 6);
+  const eyeMesh = new THREE.Mesh(eyeGeo, furMat(0x1a0e08, 0.3));
+  eyeMesh.position.set(side * 0.16, 1.32, 0.76);
+  plume.add(eyeMesh);
+  const shineGeo = new THREE.SphereGeometry(0.016, 6, 4);
+  const shineMesh = new THREE.Mesh(shineGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.3 }));
+  shineMesh.position.set(side * 0.17, 1.335, 0.778);
+  plume.add(shineMesh);
+}
+
+// Ears (longues oreilles tombantes bouclées)
+for (const side of [-1, 1]) {
+  const earGroup = new THREE.Group();
+  // Upper ear attachment
+  const earTopGeo = new THREE.SphereGeometry(1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  earTopGeo.scale(0.18, 0.20, 0.12);
+  const earTopMesh = new THREE.Mesh(earTopGeo, furMat(furDark));
+  earGroup.add(earTopMesh);
+  // Lower ear flap (tombant)
+  const earFlapGeo = new THREE.CapsuleGeometry(0.10, 0.28, 6, 8);
+  const earFlapMesh = new THREE.Mesh(earFlapGeo, furMat(furDark));
+  earFlapMesh.position.set(0, -0.28, 0.02);
+  earFlapMesh.scale.set(0.8, 1, 0.55);
+  earFlapMesh.castShadow = true;
+  earGroup.add(earFlapMesh);
+  earGroup.position.set(side * 0.32, 1.30, 0.42);
+  earGroup.rotation.z = side * 0.18;
+  earGroup.rotation.x = 0.25;
+  plume.add(earGroup);
+}
+
+// Legs — longues et fines (élancé)
+const legPositions = [
+  [-0.28, -0.18, 0.42],  // avant gauche
+  [ 0.28, -0.18, 0.42],  // avant droit
+  [-0.30, -0.18, -0.38], // arrière gauche
+  [ 0.30, -0.18, -0.38], // arrière droit
+];
+for (const [lx, ly, lz] of legPositions) {
+  // Upper leg
+  const upperGeo = new THREE.CylinderGeometry(0.10, 0.09, 0.55, 8);
+  const upperMesh = new THREE.Mesh(upperGeo, furMat(furColor));
+  upperMesh.position.set(lx, ly - 0.28, lz);
+  upperMesh.castShadow = true;
+  plume.add(upperMesh);
+  // Lower leg (plus fin)
+  const lowerGeo = new THREE.CylinderGeometry(0.075, 0.065, 0.55, 8);
+  const lowerMesh = new THREE.Mesh(lowerGeo, furMat(furDark));
+  lowerMesh.position.set(lx, ly - 0.84, lz);
+  lowerMesh.castShadow = true;
+  plume.add(lowerMesh);
+  // Paw
+  const pawGeo = new THREE.SphereGeometry(0.10, 8, 6);
+  const pawMesh = new THREE.Mesh(pawGeo, furMat(furDark));
+  pawMesh.scale.set(1.1, 0.55, 1.2);
+  pawMesh.position.set(lx, ly - 1.14, lz);
+  plume.add(pawMesh);
+}
+
+// Tail — plumeau bouclé recourbé vers le haut, bien fourni
+const tailCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, 0.05, -0.88),
+  new THREE.Vector3(0, 0.40, -1.10),
+  new THREE.Vector3(0, 0.90, -1.08),
+  new THREE.Vector3(0, 1.30, -0.85),
+  new THREE.Vector3(0, 1.52, -0.60),
+]);
+const tailGeo = new THREE.TubeGeometry(tailCurve, 20, 0.075, 8, false);
+const tailMesh = new THREE.Mesh(tailGeo, furMat(furDark));
+tailMesh.castShadow = true;
+plume.add(tailMesh);
+
+// Tail fluff (grosses boucles au bout = plumeau)
+for (let i = 0; i < 10; i++) {
+  const t = 0.45 + i * 0.058;
+  const pt = tailCurve.getPoint(Math.min(t, 1));
+  const r = 0.10 + i * 0.018;
+  const fluffGeo = fluffySphere(r, r * 0.85, r, 0);
+  const fluffMesh = new THREE.Mesh(fluffGeo, furMat(i > 5 ? furLight : furDark));
+  fluffMesh.position.copy(pt);
+  plume.add(fluffMesh);
+}
+
+// Décale tout le modèle pour que les pattes touchent le sol
+plume.position.y = 0.72;
+
+// Gather all body meshes for raycasting (exclude shine/eyes)
+const bodyMeshes = plume.children.filter(c => c.isMesh && c.material.color.r > 0.1);
+
+// ---- Bite markers ----
+const biteSpheres = [];
+
+function addBiteMarker(position, id) {
+  const geo = new THREE.SphereGeometry(0.07, 10, 8);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xe74c3c,
+    roughness: 0.4,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.88,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(position);
+  mesh.userData.biteId = id;
+
+  // pulse ring
+  const ringGeo = new THREE.RingGeometry(0.08, 0.12, 20);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xe74c3c, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.userData.isRing = true;
+  mesh.add(ring);
+
+  plume.add(mesh);
+  biteSpheres.push(mesh);
+  return mesh;
+}
+
+function removeBiteMarker(id) {
+  const idx = biteSpheres.findIndex(m => m.userData.biteId === id);
+  if (idx !== -1) {
+    plume.remove(biteSpheres[idx]);
+    biteSpheres.splice(idx, 1);
+  }
+}
+
+// ---- Zone name from position ----
+function zoneName(pos) {
+  const y = pos.y, z = pos.z, x = pos.x;
+  const side = x < -0.1 ? ' gauche' : x > 0.1 ? ' droit' : '';
+  if (y > 1.0) return 'Tête / oreilles';
+  if (y > 0.65) return 'Cou' + side;
+  if (y < -0.5) return 'Patte' + side;
+  if (z < -0.5) return 'Dos arrière' + side;
+  if (z > 0.5) return 'Poitrail' + side;
+  return 'Dos' + side;
+}
+
+// ---- LocalStorage ----
+function loadBites() {
+  try { return JSON.parse(localStorage.getItem('plume_bites') || '[]'); } catch { return []; }
+}
+function saveBites(bites) {
+  localStorage.setItem('plume_bites', JSON.stringify(bites));
+}
+
+let bites = loadBites();
+
+// Restore markers
+bites.forEach(b => addBiteMarker(new THREE.Vector3(b.px, b.py, b.pz), b.id));
+
+// ---- UI rendering ----
+let currentFilter = 'today';
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderJournal() {
+  const list = document.getElementById('bite-list');
+  const filtered = currentFilter === 'today'
+    ? bites.filter(b => b.date.startsWith(todayStr()))
+    : bites;
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-state">Aucune piqûre${currentFilter === 'today' ? " aujourd'hui" : ''}.<br>Cliquez sur Plume pour en marquer une.</div>`;
+    return;
+  }
+
+  const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map(b => `
+    <div class="bite-item" data-id="${b.id}">
+      <div class="bite-date">${formatDate(b.date)}</div>
+      <div class="bite-zone">${b.zone}<span class="status-badge status-${b.status}">${statusLabel(b.status)}</span></div>
+      ${b.note ? `<div style="font-size:0.8rem;color:#8a6050;margin-top:3px;">${escHtml(b.note)}</div>` : ''}
+      <div class="bite-controls">
+        <select onchange="updateStatus('${b.id}', this.value)">
+          <option value="nouvelle" ${b.status==='nouvelle'?'selected':''}>Nouvelle</option>
+          <option value="guerison" ${b.status==='guerison'?'selected':''}>En guérison</option>
+          <option value="guerie" ${b.status==='guerie'?'selected':''}>Guérie</option>
+        </select>
+        <button class="bite-delete" onclick="deleteBite('${b.id}')" title="Supprimer">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function statusLabel(s) {
+  return { nouvelle: 'Nouvelle', guerison: 'En guérison', guerie: 'Guérie' }[s] || s;
+}
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+window.updateStatus = function(id, status) {
+  const b = bites.find(x => x.id === id);
+  if (b) { b.status = status; saveBites(bites); renderJournal(); }
+};
+window.deleteBite = function(id) {
+  bites = bites.filter(x => x.id !== id);
+  saveBites(bites);
+  removeBiteMarker(id);
+  renderJournal();
+};
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderJournal();
+  });
+});
+
+renderJournal();
+
+// ---- Mode (rotate vs mark) ----
+let markMode = true;
+
+const btnRotate = document.getElementById('btn-rotate');
+const btnMark = document.getElementById('btn-mark');
+
+btnRotate.addEventListener('click', () => {
+  markMode = false;
+  controls.enabled = true;
+  container.style.cursor = 'grab';
+  btnRotate.classList.add('active');
+  btnMark.classList.remove('active');
+});
+btnMark.addEventListener('click', () => {
+  markMode = true;
+  controls.enabled = false;
+  container.style.cursor = 'crosshair';
+  btnMark.classList.add('active');
+  btnRotate.classList.remove('active');
+});
+
+// Start in mark mode
+controls.enabled = false;
+
+// ---- Pending bite ----
+let pendingPos = null;
+let pendingZone = null;
+
+// ---- Raycasting / click ----
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+container.addEventListener('click', e => {
+  if (!markMode) return;
+
+  const rect = container.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(bodyMeshes, false);
+  if (hits.length === 0) return;
+
+  const hit = hits[0];
+  // Convert hit point to plume local space
+  const localPt = plume.worldToLocal(hit.point.clone());
+  pendingPos = localPt;
+  pendingZone = zoneName(localPt);
+
+  document.getElementById('modal-zone').textContent = 'Zone: ' + pendingZone;
+  document.getElementById('modal-note').value = '';
+  document.getElementById('modal-overlay').classList.add('visible');
+});
+
+document.getElementById('modal-cancel').addEventListener('click', () => {
+  pendingPos = null;
+  document.getElementById('modal-overlay').classList.remove('visible');
+});
+
+document.getElementById('modal-confirm').addEventListener('click', () => {
+  if (!pendingPos) return;
+  const note = document.getElementById('modal-note').value.trim();
+  const id = 'b' + Date.now();
+  const bite = {
+    id,
+    date: new Date().toISOString(),
+    zone: pendingZone,
+    note,
+    status: 'nouvelle',
+    px: pendingPos.x, py: pendingPos.y, pz: pendingPos.z,
+  };
+  bites.push(bite);
+  saveBites(bites);
+  addBiteMarker(pendingPos, id);
+  renderJournal();
+  pendingPos = null;
+  document.getElementById('modal-overlay').classList.remove('visible');
+});
+
+// ---- Animate ----
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+
+  // Gentle idle breathing
+  plume.scale.y = 1 + Math.sin(t * 1.1) * 0.012;
+
+  // Pulse bite rings
+  biteSpheres.forEach(m => {
+    const ring = m.children.find(c => c.userData.isRing);
+    if (ring) {
+      const s = 1 + Math.sin(t * 3) * 0.25;
+      ring.scale.set(s, s, 1);
+      ring.material.opacity = 0.5 - Math.sin(t * 3) * 0.3;
+      ring.lookAt(camera.position);
+    }
+  });
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// Resize
+window.addEventListener('resize', () => {
+  const w = container.clientWidth, h = container.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+</script>
+</body>
+</html>
